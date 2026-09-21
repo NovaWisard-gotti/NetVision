@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../models/enums.dart';
 import '../../models/network_device.dart';
 import '../../models/network_scenario.dart';
 import 'device_visuals_helper.dart';

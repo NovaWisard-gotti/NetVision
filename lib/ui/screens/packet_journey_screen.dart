@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
 import '../../state/packet_journey_provider.dart';
 import '../../state/workspace_provider.dart';
+import '../widgets/device_node_widget.dart';
 import '../widgets/workspace_canvas.dart';
 
 /// Pantalla PACKET JOURNEY: el estudiante ve, salto a salto, cómo un

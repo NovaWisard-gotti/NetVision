@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/diagnostic_issue.dart';
+import '../../models/enums.dart';
 
 /// Hoja inferior que muestra el resultado de "Validar topología": una
 /// lista de condiciones básicas detectadas, sin corregir nada
