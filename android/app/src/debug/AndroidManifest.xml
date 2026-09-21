@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- El build de depuración de Flutter necesita INTERNET únicamente para el hot-reload
+         del propio tooling; no lo usa NetVision en tiempo de ejecución. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+</manifest>
