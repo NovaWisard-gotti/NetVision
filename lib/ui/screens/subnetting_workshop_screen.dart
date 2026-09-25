@@ -21,6 +21,7 @@ class _SubnettingWorkshopScreenState extends ConsumerState<SubnettingWorkshopScr
   final _countCtrl = TextEditingController(text: '4');
 
   List<(String network, int prefix)>? _result;
+  String? _explanation;
   String? _error;
 
   @override
@@ -60,8 +61,18 @@ class _SubnettingWorkshopScreenState extends ConsumerState<SubnettingWorkshopScr
 
     try {
       final divided = AddressingEngine.divideIntoSubnets(network, prefix, count);
+      final bitsNeeded = AddressingEngine.bitsNeededForSubnetCount(count);
+      final totalPossible = 1 << bitsNeeded;
+      final leftover = totalPossible - count;
+      final newPrefix = divided.first.$2;
       setState(() {
         _result = divided;
+        _explanation = leftover > 0
+            ? 'Para obtener al menos $count subred(es) se necesitan $bitsNeeded bit(s) adicionales. '
+                'Esto genera $totalPossible subredes /$newPrefix. Se muestran las primeras $count '
+                'solicitadas y quedan $leftover subred(es) disponible(s) para uso futuro.'
+            : 'Para obtener exactamente $count subred(es) se necesitan $bitsNeeded bit(s) adicionales, '
+                'lo que genera exactamente $totalPossible subredes /$newPrefix.';
         _error = null;
       });
       ref.read(progressNotifierProvider.notifier).registerSubnettingExercise();
@@ -69,6 +80,7 @@ class _SubnettingWorkshopScreenState extends ConsumerState<SubnettingWorkshopScr
       setState(() {
         _error = e is ArgumentError ? e.message.toString() : 'No fue posible calcular las subredes.';
         _result = null;
+        _explanation = null;
       });
     }
   }
@@ -127,6 +139,10 @@ class _SubnettingWorkshopScreenState extends ConsumerState<SubnettingWorkshopScr
               'Nuevo prefijo: /${_result!.first.$2}  ·  ${_result!.length} subred(es) generadas',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
             ),
+            if (_explanation != null) ...[
+              const SizedBox(height: 8),
+              Text(_explanation!, style: Theme.of(context).textTheme.bodySmall),
+            ],
             const SizedBox(height: 12),
             for (var i = 0; i < _result!.length; i++)
               Card(

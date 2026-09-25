@@ -1,5 +1,7 @@
 import '../models/network_device.dart';
 import '../models/network_scenario.dart';
+import 'addressing_engine.dart';
+import 'simulation_engine.dart';
 
 /// Resultado de una consulta DNS simulada.
 class DnsResult {
@@ -18,55 +20,68 @@ class DnsResult {
 ///
 /// Trabaja sobre un mapa hostname -> IP almacenado en el servidor DNS de la
 /// topología. Únicamente resuelve nombres dentro de dominios ficticios del
-/// propio escenario (nunca realiza consultas externas reales).
+/// propio escenario (nunca realiza consultas externas reales). Nunca elige
+/// automáticamente un servidor DNS: el cliente debe tener configurada
+/// explícitamente la dirección de un servidor DNS real y alcanzable.
 class DnsEngine {
   const DnsEngine._();
-
-  static NetworkDevice? findDnsServer(NetworkScenario scenario, {String? preferredIp}) {
-    if (preferredIp != null) {
-      for (final d in scenario.devices) {
-        if (d.hasDnsService && !d.manuallyDisconnected) {
-          final iface = d.primaryInterface;
-          if (iface?.ipv4?.address == preferredIp) return d;
-        }
-      }
-    }
-    for (final d in scenario.devices) {
-      if (d.hasDnsService && !d.manuallyDisconnected) return d;
-    }
-    return null;
-  }
 
   static DnsResult resolve({
     required NetworkScenario scenario,
     required String hostname,
+    required String clientDeviceId,
     String? clientDnsIp,
   }) {
-    final server = findDnsServer(scenario, preferredIp: clientDnsIp);
-    if (server == null) {
+    if (clientDnsIp == null || clientDnsIp.trim().isEmpty) {
       return const DnsResult(
         success: false,
-        message: 'No hay un servidor DNS activo y alcanzable en la topología.',
+        message: 'El dispositivo no tiene configurado un servidor DNS.',
+      );
+    }
+    final dnsIp = clientDnsIp.trim();
+    if (!AddressingEngine.isValidIpv4(dnsIp)) {
+      return const DnsResult(
+        success: false,
+        message: 'La dirección DNS configurada no tiene un formato válido.',
       );
     }
 
-    if (clientDnsIp != null && clientDnsIp.isNotEmpty) {
-      final serverIp = server.primaryInterface?.ipv4?.address;
-      if (serverIp != clientDnsIp) {
-        return DnsResult(
-          success: false,
-          message:
-              'El cliente tiene configurado un DNS ($clientDnsIp) distinto del servidor disponible (${serverIp ?? "desconocido"}).',
-        );
+    NetworkDevice? server;
+    for (final device in scenario.devices) {
+      if (device.interfaces.any((i) => i.ipv4?.address == dnsIp)) {
+        server = device;
+        break;
       }
+    }
+    if (server == null) {
+      return const DnsResult(
+        success: false,
+        message: 'El servidor DNS configurado no existe en la topología.',
+      );
+    }
+    if (!server.hasDnsService) {
+      return DnsResult(
+        success: false,
+        message: 'La dirección DNS configurada ($dnsIp) no corresponde a un servidor DNS.',
+      );
+    }
+    if (server.manuallyDisconnected ||
+        !SimulationEngine.inSameBroadcastDomain(
+          scenario: scenario,
+          deviceAId: clientDeviceId,
+          deviceBId: server.id,
+        )) {
+      return DnsResult(
+        success: false,
+        message: 'El servidor DNS configurado no es alcanzable desde este dispositivo.',
+      );
     }
 
     final ip = server.dnsRecords[hostname.trim().toLowerCase()];
     if (ip == null) {
-      return DnsResult(
+      return const DnsResult(
         success: false,
-        message:
-            '${server.name} no tiene un registro para "$hostname". Verifica el nombre o registra el dominio en el servidor.',
+        message: 'No se encontró un registro DNS para el dominio solicitado.',
       );
     }
 

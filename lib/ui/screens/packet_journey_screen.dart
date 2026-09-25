@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
+import '../../state/case_completion_controller.dart';
 import '../../state/packet_journey_provider.dart';
 import '../../state/workspace_provider.dart';
 import '../widgets/device_node_widget.dart';
@@ -27,13 +28,18 @@ class _PacketJourneyScreenState extends ConsumerState<PacketJourneyScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final scenario = ref.read(workspaceProvider);
       ref.read(packetJourneyProvider.notifier).runSimulation(
             scenario: scenario,
             sourceDeviceId: widget.sourceDeviceId,
             destinationDeviceId: widget.destinationDeviceId,
           );
+      final justCompleted = await evaluateAndRegisterCaseCompletion(ref, scenario);
+      if (!mounted || !justCompleted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('¡Caso completado! Se actualizó tu progreso.'),
+      ));
     });
   }
 

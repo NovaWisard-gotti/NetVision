@@ -22,6 +22,22 @@ class NetworkScenario {
   final String? testSourceDeviceId;
   final String? testDestinationDeviceId;
 
+  /// Requisitos funcionales declarativos que definen cuándo este caso
+  /// guiado se considera realmente completado (ver el motor de finalización
+  /// de casos). Un escenario libre (sandbox) simplemente no declara ninguno.
+  ///
+  /// Pares de dispositivos (por id) cuya comunicación exitosa (verificada
+  /// mediante el motor de simulación) es requisito de finalización.
+  final List<List<String>> requiredConnectivityChecks;
+
+  /// Ids de dispositivos que deben obtener una configuración IPv4 válida
+  /// mediante DHCP para que el caso se considere completado.
+  final List<String> requiredDhcpClientIds;
+
+  /// Consultas DNS ({'clientId', 'hostname'}) que deben resolverse
+  /// correctamente para que el caso se considere completado.
+  final List<Map<String, String>> requiredDnsLookups;
+
   NetworkScenario({
     required this.id,
     required this.title,
@@ -33,8 +49,40 @@ class NetworkScenario {
     this.hiddenFaultDescription,
     this.testSourceDeviceId,
     this.testDestinationDeviceId,
+    List<List<String>>? requiredConnectivityChecks,
+    List<String>? requiredDhcpClientIds,
+    List<Map<String, String>>? requiredDnsLookups,
   })  : devices = devices ?? [],
-        links = links ?? [];
+        links = links ?? [],
+        requiredConnectivityChecks = requiredConnectivityChecks ?? [],
+        requiredDhcpClientIds = requiredDhcpClientIds ?? [],
+        requiredDnsLookups = requiredDnsLookups ?? [];
+
+  /// Copia este escenario reemplazando únicamente los dispositivos y/o
+  /// enlaces indicados; todo lo demás (incluidos los metadatos de caso
+  /// guiado y los requisitos de finalización) se conserva. Se usa en lugar
+  /// de reconstruir manualmente el `NetworkScenario` para evitar perder
+  /// campos al mutar la topología (dispositivos, enlaces).
+  NetworkScenario copyWith({
+    List<NetworkDevice>? devices,
+    List<NetworkLink>? links,
+  }) {
+    return NetworkScenario(
+      id: id,
+      title: title,
+      objective: objective,
+      devices: devices ?? this.devices,
+      links: links ?? this.links,
+      isBuiltInCase: isBuiltInCase,
+      caseNumber: caseNumber,
+      hiddenFaultDescription: hiddenFaultDescription,
+      testSourceDeviceId: testSourceDeviceId,
+      testDestinationDeviceId: testDestinationDeviceId,
+      requiredConnectivityChecks: requiredConnectivityChecks,
+      requiredDhcpClientIds: requiredDhcpClientIds,
+      requiredDnsLookups: requiredDnsLookups,
+    );
+  }
 
   NetworkDevice? deviceById(String id) {
     for (final d in devices) {
@@ -54,6 +102,9 @@ class NetworkScenario {
         'hiddenFaultDescription': hiddenFaultDescription,
         'testSourceDeviceId': testSourceDeviceId,
         'testDestinationDeviceId': testDestinationDeviceId,
+        'requiredConnectivityChecks': requiredConnectivityChecks,
+        'requiredDhcpClientIds': requiredDhcpClientIds,
+        'requiredDnsLookups': requiredDnsLookups,
       };
 
   factory NetworkScenario.fromJson(Map<String, dynamic> json) {
@@ -72,6 +123,15 @@ class NetworkScenario {
       hiddenFaultDescription: json['hiddenFaultDescription'] as String?,
       testSourceDeviceId: json['testSourceDeviceId'] as String?,
       testDestinationDeviceId: json['testDestinationDeviceId'] as String?,
+      requiredConnectivityChecks: (json['requiredConnectivityChecks'] as List<dynamic>? ?? [])
+          .map((pair) => (pair as List<dynamic>).map((e) => e as String).toList())
+          .toList(),
+      requiredDhcpClientIds: (json['requiredDhcpClientIds'] as List<dynamic>? ?? [])
+          .map((e) => e as String)
+          .toList(),
+      requiredDnsLookups: (json['requiredDnsLookups'] as List<dynamic>? ?? [])
+          .map((e) => Map<String, String>.from(e as Map))
+          .toList(),
     );
   }
 

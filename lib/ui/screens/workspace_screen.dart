@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
+import '../../engine/case_completion_engine.dart';
 import '../../engine/diagnostics_engine.dart';
 import '../../engine/simulation_engine.dart';
 import '../../models/network_scenario.dart';
-import '../../state/case_progress_provider.dart';
+import '../../state/case_completion_controller.dart';
 import '../../state/history_provider.dart';
 import '../../state/progress_provider.dart';
 import '../../state/storage_provider.dart';
@@ -111,8 +112,16 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
       destinationDeviceId: destId,
     );
     ref.read(progressNotifierProvider.notifier).registerPacketSimulated();
+    final justCompleted = await evaluateAndRegisterCaseCompletion(ref, ref.read(workspaceProvider));
     if (!mounted) return;
     showDialog(context: context, builder: (_) => PingResultDialog(packet: result));
+    if (justCompleted) _showCaseCompletedSnackBar();
+  }
+
+  void _showCaseCompletedSnackBar() {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('¡Caso completado! Se actualizó tu progreso.'),
+    ));
   }
 
   Future<void> _openPacketJourney() async {
@@ -173,10 +182,7 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
       destinationDeviceId: destId,
     );
     if (result.delivered) {
-      if (scenario.caseNumber != null) {
-        await ref.read(caseProgressProvider.notifier).markCompleted(scenario.caseNumber!);
-      }
-      ref.read(progressNotifierProvider.notifier).registerCaseCompleted();
+      await evaluateAndRegisterCaseCompletion(ref, scenario);
       if (!mounted) return;
       showDialog(
         context: context,
@@ -202,24 +208,29 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
     }
   }
 
-  void _validateTopology() {
+  Future<void> _validateTopology() async {
     final scenario = ref.read(workspaceProvider);
     final issues = DiagnosticsEngine.analyze(scenario);
     if (issues.isNotEmpty) {
       ref.read(progressNotifierProvider.notifier).registerProblemDiagnosed();
     }
+    final justCompleted = await evaluateAndRegisterCaseCompletion(ref, scenario);
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (_) => TopologyValidationSheet(issues: issues),
     );
+    if (justCompleted) _showCaseCompletedSnackBar();
   }
 
   Future<void> _finishAndReport() async {
     final scenario = ref.read(workspaceProvider);
-    final issues = DiagnosticsEngine.analyze(scenario);
+    final completion = CaseCompletionEngine.evaluate(scenario);
+    await evaluateAndRegisterCaseCompletion(ref, scenario);
+    if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ReportScreen(scenario: scenario, issues: issues),
+      builder: (_) => ReportScreen(scenario: scenario, completion: completion),
     ));
     if (!mounted) return;
     await ref.read(historyProvider.notifier).addEntry(HistoryEntry(
@@ -227,8 +238,8 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
           caseTitle: scenario.title,
           date: DateTime.now(),
           scenarioSnapshotJson: '',
-          completed: issues.isEmpty,
-          problemsFound: issues.map((i) => i.description).toList(),
+          completed: completion.success,
+          problemsFound: completion.issues.map((i) => i.description).toList(),
         ));
   }
 

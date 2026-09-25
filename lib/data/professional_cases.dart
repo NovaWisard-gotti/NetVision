@@ -90,6 +90,11 @@ NetworkScenario _case1LaboratorioUniversitario() {
     links: links,
     isBuiltInCase: true,
     caseNumber: 1,
+    requiredConnectivityChecks: [
+      [pcA, pcB],
+      [pcA, pcC],
+      [pcB, pcC],
+    ],
   );
 }
 
@@ -157,6 +162,9 @@ NetworkScenario _case2DosDepartamentos() {
     links: links,
     isBuiltInCase: true,
     caseNumber: 2,
+    requiredConnectivityChecks: [
+      [pcA, pcB],
+    ],
   );
 }
 
@@ -231,16 +239,29 @@ NetworkScenario _case3OficinaEnCrecimiento() {
     links: links,
     isBuiltInCase: true,
     caseNumber: 3,
+    requiredConnectivityChecks: [
+      [pcA, pcB],
+      [pcA, pcC],
+      [pcA, pcD],
+      [pcB, pcC],
+      [pcB, pcD],
+      [pcC, pcD],
+    ],
   );
 }
 
 NetworkScenario _case4ServiciosDeEmpresa() {
   const server = 'c4-server', router = 'c4-router', sw = 'c4-sw', pcA = 'c4-pcA', pcB = 'c4-pcB';
+  // Topología correcta: Router — Switch — {Servidor DHCP/DNS, PC1, PC2}.
+  // El servidor comparte la LAN con los clientes a través del switch; el
+  // router solo aporta la puerta de enlace de esa única red 192.168.5.0/24.
+  // Cada dispositivo usa su propia interfaz física (nunca se reutiliza una
+  // misma interfaz de router para dos enlaces distintos).
   final serverDevice = NetworkDevice(
     id: server,
     type: DeviceType.server,
     name: 'Servidor-DHCP-DNS',
-    position: const Offset(120, 220),
+    position: const Offset(140, 460),
     interfaces: [_hostIface(server, '$server-if', '192.168.5.5', 24, gateway: '192.168.5.1')],
     serverRole: ServerRole.dnsAndDhcp,
     dhcpPoolStart: '192.168.5.100',
@@ -259,14 +280,14 @@ NetworkScenario _case4ServiciosDeEmpresa() {
       id: router,
       type: DeviceType.router,
       name: 'Router-Empresa',
-      position: const Offset(320, 260),
+      position: const Offset(320, 200),
       interfaces: [_hostIface(router, '$router-if', '192.168.5.1', 24)],
     ),
     NetworkDevice(
       id: sw,
       type: DeviceType.switchDevice,
       name: 'Switch-Empresa',
-      position: const Offset(320, 400),
+      position: const Offset(320, 330),
       interfaces: [
         NetworkInterface(id: '$sw-p0', deviceId: sw, name: 'Puerto 0'),
         NetworkInterface(id: '$sw-p1', deviceId: sw, name: 'Puerto 1'),
@@ -278,7 +299,7 @@ NetworkScenario _case4ServiciosDeEmpresa() {
       id: pcA,
       type: DeviceType.pc,
       name: 'PC-Empleado-01',
-      position: const Offset(180, 500),
+      position: const Offset(320, 460),
       interfaces: [
         NetworkInterface(
           id: '$pcA-if',
@@ -292,7 +313,7 @@ NetworkScenario _case4ServiciosDeEmpresa() {
       id: pcB,
       type: DeviceType.pc,
       name: 'PC-Empleado-02',
-      position: const Offset(460, 500),
+      position: const Offset(500, 460),
       interfaces: [
         NetworkInterface(
           id: '$pcB-if',
@@ -304,10 +325,10 @@ NetworkScenario _case4ServiciosDeEmpresa() {
     ),
   ];
   final links = [
-    NetworkLink(id: 'c4-l0', deviceAId: server, interfaceAId: '$server-if', deviceBId: router, interfaceBId: '$router-if'),
-    NetworkLink(id: 'c4-l1', deviceAId: router, interfaceAId: '$router-if', deviceBId: sw, interfaceBId: '$sw-p0'),
-    NetworkLink(id: 'c4-l2', deviceAId: pcA, interfaceAId: '$pcA-if', deviceBId: sw, interfaceBId: '$sw-p1'),
-    NetworkLink(id: 'c4-l3', deviceAId: pcB, interfaceAId: '$pcB-if', deviceBId: sw, interfaceBId: '$sw-p2'),
+    NetworkLink(id: 'c4-l0', deviceAId: router, interfaceAId: '$router-if', deviceBId: sw, interfaceBId: '$sw-p0'),
+    NetworkLink(id: 'c4-l1', deviceAId: server, interfaceAId: '$server-if', deviceBId: sw, interfaceBId: '$sw-p1'),
+    NetworkLink(id: 'c4-l2', deviceAId: pcA, interfaceAId: '$pcA-if', deviceBId: sw, interfaceBId: '$sw-p2'),
+    NetworkLink(id: 'c4-l3', deviceAId: pcB, interfaceAId: '$pcB-if', deviceBId: sw, interfaceBId: '$sw-p3'),
   ];
   return NetworkScenario(
     id: 'case-4',
@@ -321,6 +342,14 @@ NetworkScenario _case4ServiciosDeEmpresa() {
     links: links,
     isBuiltInCase: true,
     caseNumber: 4,
+    requiredDhcpClientIds: [pcA, pcB],
+    requiredDnsLookups: [
+      {'clientId': pcA, 'hostname': 'portal.universidad.test'},
+    ],
+    requiredConnectivityChecks: [
+      [pcA, pcB],
+      [pcA, server],
+    ],
   );
 }
 
@@ -405,6 +434,9 @@ NetworkScenario _case5RedConFallas() {
     caseNumber: 5,
     testSourceDeviceId: pcB,
     testDestinationDeviceId: pcC,
+    requiredConnectivityChecks: [
+      [pcB, pcC],
+    ],
     hiddenFaultDescription:
         'PC-Diseño-02 tiene configurado el gateway 192.168.7.99, una dirección que pertenece a la '
         'subred correcta pero que ningún dispositivo real de la topología posee (el router usa '

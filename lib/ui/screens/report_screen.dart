@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../engine/case_completion_engine.dart';
 import '../../models/diagnostic_issue.dart';
 import '../../models/enums.dart';
 import '../../models/network_scenario.dart';
@@ -7,16 +8,22 @@ import '../widgets/device_visuals_helper.dart';
 
 /// Informe educativo generado al finalizar un escenario: no se limita a
 /// una puntuación, sino que resume topología, configuraciones, pruebas y
-/// resultado.
+/// resultado. El resultado final nunca depende únicamente de que
+/// Network Doctor no haya encontrado problemas: también exige que se
+/// cumplan los requisitos funcionales reales del caso (conectividad, DHCP,
+/// DNS), evitando falsos positivos como "0 problemas -> todo correcto"
+/// cuando en realidad Ping o Packet Journey seguirían fallando.
 class ReportScreen extends StatelessWidget {
   final NetworkScenario scenario;
-  final List<DiagnosticIssue> issues;
+  final CaseCompletionResult completion;
 
-  const ReportScreen({super.key, required this.scenario, required this.issues});
+  const ReportScreen({super.key, required this.scenario, required this.completion});
+
+  List<DiagnosticIssue> get issues => completion.issues;
 
   @override
   Widget build(BuildContext context) {
-    final hostDevices = scenario.devices.where((d) => d.type.supportsIpv4Configuration).toList();
+    final success = completion.success;
     return Scaffold(
       appBar: AppBar(title: const Text('Informe del caso')),
       body: ListView(
@@ -83,36 +90,58 @@ class ReportScreen extends StatelessWidget {
           _SectionCard(
             title: 'Resultado final',
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
-                  issues.isEmpty ? Icons.check_circle : Icons.warning_amber_rounded,
-                  color: issues.isEmpty ? NetVisionColors.successGreen : NetVisionColors.signalYellow,
+                  success ? Icons.check_circle : Icons.warning_amber_rounded,
+                  color: success ? NetVisionColors.successGreen : NetVisionColors.signalYellow,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(issues.isEmpty
-                      ? 'La topología no presenta condiciones básicas de error.'
-                      : 'Existen ${issues.length} condición(es) por revisar.'),
+                  child: Text(success
+                      ? 'El caso cumple sus condiciones de éxito: no hay problemas de configuración '
+                          'y las pruebas funcionales requeridas (conectividad, DHCP y/o DNS) fueron exitosas.'
+                      : 'Todavía faltan condiciones por cumplir para considerar este caso resuelto.'),
                 ),
               ],
             ),
           ),
+          if (!success && completion.unmetRequirements.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _SectionCard(
+              title: 'Pendiente por cumplir',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: completion.unmetRequirements
+                    .map((r) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Text('• $r'),
+                        ))
+                    .toList(),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
 
           _SectionCard(
             title: 'Retroalimentación',
-            child: Text(_feedbackFor(hostDevices.length, issues)),
+            child: Text(_feedbackFor(success, issues)),
           ),
         ],
       ),
     );
   }
 
-  String _feedbackFor(int hostCount, List<DiagnosticIssue> issues) {
+  String _feedbackFor(bool success, List<DiagnosticIssue> issues) {
+    if (success) {
+      return 'Buen trabajo: la topología cumple las condiciones básicas de una red funcional y las '
+          'pruebas requeridas fueron exitosas. Sigue verificando con Packet Journey otros escenarios '
+          'de comunicación para confirmar que el comportamiento es el esperado.';
+    }
     if (issues.isEmpty) {
-      return 'Buen trabajo: la topología cumple las condiciones básicas de una red funcional. '
-          'Sigue verificando con Packet Journey escenarios de comunicación tanto dentro de la '
-          'misma red como hacia otras redes para confirmar que el comportamiento es el esperado.';
+      return 'Network Doctor no encontró problemas de configuración, pero todavía falta comprobar '
+          'que las pruebas funcionales del caso (conectividad, DHCP y/o DNS) funcionen realmente. '
+          'Revisa la sección "Pendiente por cumplir" antes de considerar el caso terminado.';
     }
     final types = issues.map((i) => i.type.label).toSet().join(', ');
     return 'Se detectaron condiciones relacionadas con: $types. Revisa cada dispositivo señalado, '

@@ -72,12 +72,13 @@ class AddressingEngine {
   }
 
   static String prefixToMask(int prefixLength) {
-    if (prefixLength == 0) return '0.0.0.0';
-    final value = (0xFFFFFFFF << (32 - prefixLength)) & 0xFFFFFFFF;
-    return intToIp(value);
+    return intToIp(_networkMaskInt(prefixLength));
   }
 
   static int _networkMaskInt(int prefixLength) {
+    if (!isValidPrefix(prefixLength)) {
+      throw ArgumentError('El prefijo debe estar entre 0 y 32.');
+    }
     if (prefixLength == 0) return 0;
     return (0xFFFFFFFF << (32 - prefixLength)) & 0xFFFFFFFF;
   }
@@ -111,15 +112,30 @@ class AddressingEngine {
     return (1 << (32 - prefixLength)) - 2;
   }
 
-  static bool sameSubnet(String ipA, int prefixA, String ipB, int prefixB) {
-    if (prefixA != prefixB) {
-      // Con prefijos distintos, se comparan contra el prefijo más largo
-      // (más específico), que es el criterio real de decisión IP.
-      final longer = prefixA > prefixB ? prefixA : prefixB;
-      return networkAddress(ipA, longer) == networkAddress(ipB, longer) &&
-          prefixA == prefixB;
+  /// Cuántos bits adicionales de prefijo se necesitan para obtener al menos
+  /// [subnetCount] subredes, y por lo tanto cuántas subredes utilizables
+  /// realmente genera ese prefijo (siempre una potencia de 2, que puede ser
+  /// mayor que lo solicitado).
+  static int bitsNeededForSubnetCount(int subnetCount) {
+    if (subnetCount < 1) {
+      throw ArgumentError('El número de subredes debe ser al menos 1.');
     }
-    return networkAddress(ipA, prefixA) == networkAddress(ipB, prefixA);
+    return subnetCount > 1 ? (subnetCount - 1).bitLength : 0;
+  }
+
+  /// Determina si dos hosts (cada uno con su propia IP y prefijo) se
+  /// consideran mutuamente dentro de la misma red local.
+  ///
+  /// Cuando los prefijos difieren, la comparación se realiza con el más
+  /// largo (más específico) de los dos: si ambas direcciones coinciden bajo
+  /// ese prefijo más estricto, automáticamente también coinciden bajo el más
+  /// corto (acortar un prefijo nunca puede deshacer una coincidencia), por lo
+  /// que evaluar solo el prefijo largo equivale a exigir el acuerdo de ambos
+  /// lados. Esto refleja correctamente la asimetría real de máscaras
+  /// distintas en el mismo segmento.
+  static bool sameSubnet(String ipA, int prefixA, String ipB, int prefixB) {
+    final strictestPrefix = prefixA >= prefixB ? prefixA : prefixB;
+    return networkAddress(ipA, strictestPrefix) == networkAddress(ipB, strictestPrefix);
   }
 
   static bool isWithinSubnet(String candidateIp, String networkIp, int prefixLength) {
@@ -135,10 +151,7 @@ class AddressingEngine {
     int basePrefix,
     int subnetCount,
   ) {
-    if (subnetCount < 1) {
-      throw ArgumentError('El número de subredes debe ser al menos 1.');
-    }
-    final bitsNeeded = (subnetCount > 1) ? (subnetCount - 1).bitLength : 0;
+    final bitsNeeded = bitsNeededForSubnetCount(subnetCount);
     final newPrefix = basePrefix + bitsNeeded;
     if (newPrefix > 30) {
       throw ArgumentError(

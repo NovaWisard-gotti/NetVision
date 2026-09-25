@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import '../engine/addressing_engine.dart';
+import '../engine/dhcp_engine.dart';
 import '../models/enums.dart';
 import '../models/ipv4_configuration.dart';
 import '../models/network_device.dart';
@@ -94,16 +96,7 @@ class WorkspaceNotifier extends StateNotifier<NetworkScenario> {
       // Switch / AP: puertos sin IP, se crean bajo demanda al conectar.
     }
 
-    state = NetworkScenario(
-      id: state.id,
-      title: state.title,
-      objective: state.objective,
-      devices: [...state.devices, device],
-      links: state.links,
-      isBuiltInCase: state.isBuiltInCase,
-      caseNumber: state.caseNumber,
-      hiddenFaultDescription: state.hiddenFaultDescription,
-    );
+    state = state.copyWith(devices: [...state.devices, device]);
     _persistIfSandbox();
     return null;
   }
@@ -127,16 +120,7 @@ class WorkspaceNotifier extends StateNotifier<NetworkScenario> {
     final devices = state.devices.where((d) => d.id != deviceId).toList();
     final links =
         state.links.where((l) => !l.connects(deviceId)).toList();
-    state = NetworkScenario(
-      id: state.id,
-      title: state.title,
-      objective: state.objective,
-      devices: devices,
-      links: links,
-      isBuiltInCase: state.isBuiltInCase,
-      caseNumber: state.caseNumber,
-      hiddenFaultDescription: state.hiddenFaultDescription,
-    );
+    state = state.copyWith(devices: devices, links: links);
     _persistIfSandbox();
   }
 
@@ -190,16 +174,7 @@ class WorkspaceNotifier extends StateNotifier<NetworkScenario> {
       deviceBId: deviceBId,
       interfaceBId: ifaceB.id,
     );
-    state = NetworkScenario(
-      id: state.id,
-      title: state.title,
-      objective: state.objective,
-      devices: state.devices,
-      links: [...state.links, link],
-      isBuiltInCase: state.isBuiltInCase,
-      caseNumber: state.caseNumber,
-      hiddenFaultDescription: state.hiddenFaultDescription,
-    );
+    state = state.copyWith(links: [...state.links, link]);
     _persistIfSandbox();
     return null;
   }
@@ -245,16 +220,7 @@ class WorkspaceNotifier extends StateNotifier<NetworkScenario> {
   }
 
   void removeLink(String linkId) {
-    state = NetworkScenario(
-      id: state.id,
-      title: state.title,
-      objective: state.objective,
-      devices: state.devices,
-      links: state.links.where((l) => l.id != linkId).toList(),
-      isBuiltInCase: state.isBuiltInCase,
-      caseNumber: state.caseNumber,
-      hiddenFaultDescription: state.hiddenFaultDescription,
-    );
+    state = state.copyWith(links: state.links.where((l) => l.id != linkId).toList());
     _persistIfSandbox();
   }
 
@@ -298,7 +264,10 @@ class WorkspaceNotifier extends StateNotifier<NetworkScenario> {
     _touch();
   }
 
-  void updateDhcpPool({
+  /// Valida y guarda el pool DHCP de un servidor. Devuelve un mensaje de
+  /// error (y no guarda nada) si la configuración es inválida, o `null` si
+  /// se guardó correctamente.
+  String? updateDhcpPool({
     required String deviceId,
     String? start,
     String? end,
@@ -307,13 +276,30 @@ class WorkspaceNotifier extends StateNotifier<NetworkScenario> {
     String? dns,
   }) {
     final device = state.deviceById(deviceId);
-    if (device == null) return;
-    if (start != null) device.dhcpPoolStart = start;
-    if (end != null) device.dhcpPoolEnd = end;
-    if (prefixLength != null) device.dhcpPrefixLength = prefixLength;
-    if (gateway != null) device.dhcpGateway = gateway;
-    if (dns != null) device.dhcpDns = dns;
+    if (device == null) return 'Dispositivo no encontrado.';
+
+    final effectiveStart = start ?? device.dhcpPoolStart;
+    final effectiveEnd = end ?? device.dhcpPoolEnd;
+    final effectivePrefix = prefixLength ?? device.dhcpPrefixLength;
+    final effectiveGateway = gateway ?? device.dhcpGateway;
+    final effectiveDns = dns ?? device.dhcpDns;
+
+    final error = DhcpEngine.validatePool(
+      start: effectiveStart,
+      end: effectiveEnd,
+      prefixLength: effectivePrefix,
+      gateway: effectiveGateway,
+      dns: effectiveDns,
+    );
+    if (error != null) return error;
+
+    device.dhcpPoolStart = effectiveStart;
+    device.dhcpPoolEnd = effectiveEnd;
+    device.dhcpPrefixLength = effectivePrefix;
+    device.dhcpGateway = effectiveGateway;
+    device.dhcpDns = effectiveDns;
     _touch();
+    return null;
   }
 
   void setDnsRecord(String deviceId, String hostname, String ip) {
@@ -330,20 +316,37 @@ class WorkspaceNotifier extends StateNotifier<NetworkScenario> {
     _touch();
   }
 
-  void addRoute({
+  /// Valida y agrega una ruta estática. Devuelve un mensaje de error (y no
+  /// guarda nada) si los datos son inválidos, o `null` si se guardó
+  /// correctamente.
+  String? addRoute({
     required String routerId,
     required String destinationNetwork,
     required int prefixLength,
     required String exitInterfaceId,
   }) {
     final device = state.deviceById(routerId);
-    if (device == null) return;
+    if (device == null) return 'Router no encontrado.';
+
+    if (!AddressingEngine.isValidIpv4(destinationNetwork)) {
+      return 'La red destino no es una dirección IPv4 válida.';
+    }
+    if (!AddressingEngine.isValidPrefix(prefixLength)) {
+      return 'El prefijo debe estar entre 0 y 32.';
+    }
+    final exitIface = device.interfaces.where((i) => i.id == exitInterfaceId);
+    if (exitIface.isEmpty) {
+      return 'La interfaz de salida seleccionada no existe en este router.';
+    }
+
+    final normalizedNetwork = AddressingEngine.networkAddress(destinationNetwork, prefixLength);
     device.routeTable.add({
-      'destinationNetwork': destinationNetwork,
+      'destinationNetwork': normalizedNetwork,
       'prefixLength': prefixLength,
       'exitInterfaceId': exitInterfaceId,
     });
     _touch();
+    return null;
   }
 
   void removeRoute(String routerId, int index) {

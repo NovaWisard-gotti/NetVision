@@ -31,6 +31,39 @@ void main() {
       expect(AddressingEngine.sameSubnet('192.168.1.10', 24, '192.168.2.10', 24), false);
     });
 
+    group('sameSubnet con prefijos asimétricos', () {
+      test('mismo prefijo, misma red -> true', () {
+        expect(AddressingEngine.sameSubnet('192.168.1.10', 24, '192.168.1.20', 24), true);
+      });
+
+      test('mismo prefijo, redes distintas -> false', () {
+        expect(AddressingEngine.sameSubnet('192.168.1.10', 24, '192.168.2.10', 24), false);
+      });
+
+      test('prefijos distintos pero ambos extremos caen en el mismo bloque más específico -> true', () {
+        // 192.168.1.10/24 y 192.168.1.20/25: ambas direcciones están dentro
+        // de 192.168.1.0/25 (el prefijo más específico), así que se
+        // consideran la misma red.
+        expect(AddressingEngine.sameSubnet('192.168.1.10', 24, '192.168.1.20', 25), true);
+      });
+
+      test('prefijos distintos y asimetría real -> false', () {
+        // 192.168.1.200 cae en el bloque superior de un /25
+        // (192.168.1.128/25), mientras que 192.168.1.20 cae en el bloque
+        // inferior (192.168.1.0/25): bajo el prefijo más específico (/25)
+        // no coinciden, así que no son la misma red.
+        expect(AddressingEngine.sameSubnet('192.168.1.200', 24, '192.168.1.20', 25), false);
+      });
+
+      test('no es una simple comparación de igualdad de prefijos', () {
+        // Antes de la corrección, cualquier par con prefijos distintos
+        // devolvía siempre false por una condición contradictoria. Este caso
+        // (10.0.0.4/8 y 10.0.0.6/30, ambos dentro del mismo bloque /30
+        // 10.0.0.4-10.0.0.7) confirma que ya no ocurre.
+        expect(AddressingEngine.sameSubnet('10.0.0.4', 8, '10.0.0.6', 30), true);
+      });
+    });
+
     test('divide una red en subredes iguales', () {
       final subnets = AddressingEngine.divideIntoSubnets('192.168.0.0', 24, 4);
       expect(subnets.length, 4);
@@ -45,6 +78,20 @@ void main() {
       expect(AddressingEngine.maskToPrefix('255.255.255.0'), 24);
       expect(AddressingEngine.maskToPrefix('255.255.255.128'), 25);
       expect(AddressingEngine.maskToPrefix('255.0.255.0'), null);
+    });
+
+    test('bitsNeededForSubnetCount calcula los bits y subredes reales generadas', () {
+      // 3 subredes solicitadas -> se necesitan 2 bits -> en realidad genera 4.
+      expect(AddressingEngine.bitsNeededForSubnetCount(3), 2);
+      expect(AddressingEngine.bitsNeededForSubnetCount(4), 2);
+      expect(AddressingEngine.bitsNeededForSubnetCount(1), 0);
+      expect(AddressingEngine.bitsNeededForSubnetCount(5), 3);
+    });
+
+    test('funciones de red lanzan errores claros con datos inválidos en vez de fallar silenciosamente', () {
+      expect(() => AddressingEngine.ipToInt('no-es-una-ip'), throwsFormatException);
+      expect(() => AddressingEngine.networkAddress('192.168.1.1', 99), throwsArgumentError);
+      expect(() => AddressingEngine.divideIntoSubnets('192.168.0.0', 24, 0), throwsArgumentError);
     });
   });
 }

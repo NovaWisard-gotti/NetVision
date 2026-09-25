@@ -7,6 +7,7 @@ import '../../engine/dns_engine.dart';
 import '../../models/enums.dart';
 import '../../models/network_device.dart';
 import '../../models/network_scenario.dart';
+import '../../state/case_completion_controller.dart';
 import '../../state/progress_provider.dart';
 import '../../state/workspace_provider.dart';
 
@@ -248,9 +249,10 @@ class _DeviceConfigSheetState extends ConsumerState<DeviceConfigSheet> {
                   OutlinedButton.icon(
                     icon: const Icon(Icons.settings_ethernet),
                     label: const Text('Solicitar configuración DHCP'),
-                    onPressed: () {
+                    onPressed: () async {
                       final result = DhcpEngine.requestAddress(
                           scenario: ref.read(workspaceProvider), client: device);
+                      var justCompleted = false;
                       if (result.success) {
                         final iface = device.primaryInterface!;
                         notifier.updateIpv4(
@@ -264,6 +266,9 @@ class _DeviceConfigSheetState extends ConsumerState<DeviceConfigSheet> {
                           clearDns: result.dns == null,
                         );
                         ref.read(progressNotifierProvider.notifier).registerServicePracticed('DHCP');
+                        justCompleted = await evaluateAndRegisterCaseCompletion(
+                            ref, ref.read(workspaceProvider));
+                        if (!mounted) return;
                         setState(() {
                           _ipCtrl.text = result.assignedIp ?? '';
                           _prefixCtrl.text = (result.prefixLength ?? 24).toString();
@@ -271,7 +276,13 @@ class _DeviceConfigSheetState extends ConsumerState<DeviceConfigSheet> {
                           _dnsCtrl.text = result.dns ?? '';
                         });
                       }
+                      if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
+                      if (justCompleted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('¡Caso completado! Se actualizó tu progreso.'),
+                        ));
+                      }
                     },
                   ),
                 ],
@@ -424,16 +435,17 @@ class _DhcpPoolEditorState extends ConsumerState<_DhcpPoolEditor> {
             icon: const Icon(Icons.save_outlined),
             label: const Text('Guardar pool'),
             onPressed: () {
-              ref.read(workspaceProvider.notifier).updateDhcpPool(
+              final error = ref.read(workspaceProvider.notifier).updateDhcpPool(
                     deviceId: widget.deviceId,
                     start: _start.text.trim(),
                     end: _end.text.trim(),
-                    prefixLength: int.tryParse(_prefix.text.trim()) ?? 24,
+                    prefixLength: int.tryParse(_prefix.text.trim()),
                     gateway: _gw.text.trim(),
                     dns: _dns.text.trim(),
                   );
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('Pool DHCP guardado.')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(error ?? 'Pool DHCP guardado.')),
+              );
             },
           ),
         ),
@@ -555,19 +567,29 @@ class _DnsLookupToolState extends ConsumerState<_DnsLookupTool> {
             ),
             const SizedBox(width: 8),
             FilledButton(
-              onPressed: () {
+              onPressed: () async {
                 final scenario = ref.read(workspaceProvider);
                 final device = scenario.deviceById(widget.deviceId);
                 final clientDns = device?.primaryInterface?.ipv4?.dns;
                 final result = DnsEngine.resolve(
                   scenario: scenario,
                   hostname: _hostCtrl.text,
+                  clientDeviceId: widget.deviceId,
                   clientDnsIp: clientDns,
                 );
+                var justCompleted = false;
                 if (result.success) {
                   ref.read(progressNotifierProvider.notifier).registerServicePracticed('DNS');
+                  justCompleted =
+                      await evaluateAndRegisterCaseCompletion(ref, ref.read(workspaceProvider));
                 }
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
+                if (justCompleted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('¡Caso completado! Se actualizó tu progreso.'),
+                  ));
+                }
               },
               child: const Text('Resolver'),
             ),
@@ -672,13 +694,26 @@ class _RouterInterfaceRowState extends ConsumerState<_RouterInterfaceRow> {
         IconButton(
           icon: const Icon(Icons.check, size: 20),
           onPressed: () {
-            final prefix = int.tryParse(_prefix.text.trim()) ?? 24;
+            final address = _ip.text.trim();
+            if (address.isNotEmpty && !AddressingEngine.isValidIpv4(address)) {
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('La dirección IPv4 no es válida.')));
+              return;
+            }
+            final prefix = int.tryParse(_prefix.text.trim());
+            if (prefix == null || !AddressingEngine.isValidPrefix(prefix)) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('El prefijo debe ser un número entre 0 y 32.')));
+              return;
+            }
             ref.read(workspaceProvider.notifier).updateIpv4(
                   deviceId: widget.deviceId,
                   interfaceId: widget.interfaceId,
-                  address: _ip.text.trim(),
+                  address: address,
                   prefixLength: prefix,
                 );
+            ScaffoldMessenger.of(context)
+                .showSnackBar(const SnackBar(content: Text('Interfaz actualizada.')));
           },
         ),
       ],
@@ -747,12 +782,16 @@ class _AddRouteRowState extends ConsumerState<_AddRouteRow> {
             label: const Text('Añadir ruta'),
             onPressed: () {
               if (_net.text.trim().isEmpty || _exitIface == null) return;
-              ref.read(workspaceProvider.notifier).addRoute(
+              final error = ref.read(workspaceProvider.notifier).addRoute(
                     routerId: widget.deviceId,
                     destinationNetwork: _net.text.trim(),
-                    prefixLength: int.tryParse(_prefix.text.trim()) ?? 24,
+                    prefixLength: int.tryParse(_prefix.text.trim()) ?? -1,
                     exitInterfaceId: _exitIface!,
                   );
+              if (error != null) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+                return;
+              }
               _net.clear();
               setState(() => _exitIface = null);
             },

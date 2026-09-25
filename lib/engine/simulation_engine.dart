@@ -35,6 +35,91 @@ class SimulationEngine {
   static List<NetworkLink> _activeLinks(NetworkScenario scenario) =>
       scenario.links.where((l) => l.enabled).toList();
 
+  /// Calcula los segmentos de capa 2 (dominios de difusión) de la topología:
+  /// grupos de interfaces unidas exclusivamente por enlaces activos y relays
+  /// de capa 2 (switches/puntos de acceso). Cada interfaz de un router
+  /// aporta su propio nodo y pertenece únicamente al segmento en el que está
+  /// conectada; un router nunca une sus propias interfaces en un mismo
+  /// segmento (eso es justamente lo que separa una red de otra).
+  ///
+  /// Se usa como base tanto para detectar redes incompatibles (Network
+  /// Doctor) como para decidir si DHCP/DNS pueden operar entre un cliente y
+  /// un servidor sin necesidad de Relay.
+  static List<Set<String>> l2Segments(NetworkScenario scenario) {
+    final parent = <String, String>{};
+    String find(String x) {
+      parent.putIfAbsent(x, () => x);
+      var root = x;
+      while (parent[root] != root) {
+        root = parent[root]!;
+      }
+      var current = x;
+      while (parent[current] != current) {
+        final next = parent[current]!;
+        parent[current] = root;
+        current = next;
+      }
+      return root;
+    }
+
+    void union(String a, String b) {
+      final rootA = find(a);
+      final rootB = find(b);
+      if (rootA != rootB) parent[rootA] = rootB;
+    }
+
+    final allKeys = <String>{};
+    for (final device in scenario.devices) {
+      for (final iface in device.interfaces) {
+        final key = '${device.id}::${iface.id}';
+        allKeys.add(key);
+        find(key);
+      }
+    }
+
+    for (final link in scenario.links) {
+      if (!link.enabled) continue;
+      final deviceA = scenario.deviceById(link.deviceAId);
+      final deviceB = scenario.deviceById(link.deviceBId);
+      if (deviceA == null || deviceB == null) continue;
+      if (deviceA.manuallyDisconnected || deviceB.manuallyDisconnected) continue;
+      union('${link.deviceAId}::${link.interfaceAId}', '${link.deviceBId}::${link.interfaceBId}');
+    }
+
+    for (final device in scenario.devices) {
+      if (!device.type.isLayer2Relay || device.manuallyDisconnected) continue;
+      final ifaceKeys = device.interfaces.map((i) => '${device.id}::${i.id}').toList();
+      for (var i = 1; i < ifaceKeys.length; i++) {
+        union(ifaceKeys[0], ifaceKeys[i]);
+      }
+    }
+
+    final groups = <String, Set<String>>{};
+    for (final key in allKeys) {
+      groups.putIfAbsent(find(key), () => {}).add(key);
+    }
+    return groups.values.toList();
+  }
+
+  /// Determina si dos dispositivos comparten el mismo dominio de difusión de
+  /// capa 2 (es decir, si podrían comunicarse mediante broadcast dentro de
+  /// la misma LAN, sin atravesar ningún router). NetVision no implementa
+  /// DHCP/DNS Relay, así que esta es la condición real que deben cumplir un
+  /// cliente y un servidor DHCP/DNS para poder operar entre sí.
+  static bool inSameBroadcastDomain({
+    required NetworkScenario scenario,
+    required String deviceAId,
+    required String deviceBId,
+  }) {
+    if (deviceAId == deviceBId) return true;
+    for (final segment in l2Segments(scenario)) {
+      final hasA = segment.any((k) => k.startsWith('$deviceAId::'));
+      final hasB = segment.any((k) => k.startsWith('$deviceBId::'));
+      if (hasA && hasB) return true;
+    }
+    return false;
+  }
+
   static List<NetworkDevice> _neighbors(
     NetworkScenario scenario,
     NetworkDevice device,
