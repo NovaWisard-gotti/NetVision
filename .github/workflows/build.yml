@@ -54,7 +54,8 @@ jobs:
           status=$?
           cat analyze_output.txt
           if [ $status -ne 0 ]; then
-            grep -E "error|warning" analyze_output.txt | head -n 40 | while IFS= read -r line; do
+            echo "::error::flutter analyze exited with status $status"
+            awk 'NF' analyze_output.txt | tail -n 60 | while IFS= read -r line; do
               echo "::error::${line}"
             done
           fi
@@ -68,17 +69,42 @@ jobs:
           status=$?
           cat test_output.txt
           if [ $status -ne 0 ]; then
-            grep -iE "fail|error|exception" test_output.txt | tail -n 60 | while IFS= read -r line; do
+            echo "::error::flutter test exited with status $status"
+            awk 'NF' test_output.txt | tail -n 80 | while IFS= read -r line; do
               echo "::error::${line}"
             done
           fi
           exit $status
 
       - name: Build debug APK
-        run: flutter build apk --debug
+        shell: bash
+        run: |
+          set +e
+          flutter build apk --debug > build_debug_output.txt 2>&1
+          status=$?
+          cat build_debug_output.txt
+          if [ $status -ne 0 ]; then
+            echo "::error::flutter build apk --debug exited with status $status"
+            awk 'NF' build_debug_output.txt | tail -n 80 | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+          fi
+          exit $status
 
       - name: Build release APK
-        run: flutter build apk --release
+        shell: bash
+        run: |
+          set +e
+          flutter build apk --release > build_release_output.txt 2>&1
+          status=$?
+          cat build_release_output.txt
+          if [ $status -ne 0 ]; then
+            echo "::error::flutter build apk --release exited with status $status"
+            awk 'NF' build_release_output.txt | tail -n 80 | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+          fi
+          exit $status
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
