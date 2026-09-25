@@ -98,11 +98,9 @@ class DhcpEngine {
     if (startInt <= broadcastInt && broadcastInt <= endInt) {
       return 'El pool no puede incluir la dirección de broadcast.';
     }
-    if (gateway != null && gateway.trim().isNotEmpty && AddressingEngine.isValidIpv4(gateway)) {
-      final gatewayInt = AddressingEngine.ipToInt(gateway);
-      if (gatewayInt >= startInt && gatewayInt <= endInt) {
-        return 'El pool no puede incluir la dirección del gateway ($gateway).';
-      }
+    final gatewayInt = AddressingEngine.ipToInt(gateway);
+    if (gatewayInt >= startInt && gatewayInt <= endInt) {
+      return 'El pool no puede incluir la dirección del gateway ($gateway).';
     }
     return null;
   }

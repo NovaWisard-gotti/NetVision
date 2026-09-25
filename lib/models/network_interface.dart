@@ -1,4 +1,3 @@
-import 'enums.dart';
 import 'ipv4_configuration.dart';
 
 /// Una interfaz de red perteneciente a un [NetworkDevice].
