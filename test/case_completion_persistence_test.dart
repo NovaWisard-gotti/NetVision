@@ -54,6 +54,13 @@ void main() {
       expect(ref.read(caseProgressProvider), {1});
       expect(ref.read(progressNotifierProvider).casesCompleted, 1);
 
+      // ProgressNotifier persiste el contador de forma "fire-and-forget"
+      // (no espera su propio Future de guardado), así que se deja que la
+      // cola de microtareas drene antes de simular el cierre de la app;
+      // de lo contrario esta prueba sería intermitente por una carrera de
+      // temporización propia del test, no un bug de la app.
+      await tester.pump(const Duration(milliseconds: 50));
+
       // Simula cerrar y volver a abrir NetVision: primero se desmonta por
       // completo el árbol actual (lo que destruye el ProviderContainer y
       // todo su estado en memoria, igual que cerrar la app), y luego se

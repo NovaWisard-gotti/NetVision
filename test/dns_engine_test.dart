@@ -9,7 +9,7 @@ import 'package:netvision/models/network_interface.dart';
 import 'package:netvision/models/network_link.dart';
 import 'package:netvision/models/network_scenario.dart';
 
-NetworkDevice _pc(String id, {String? dns}) {
+NetworkDevice _pc(String id, {String address = '192.168.1.10', String? dns}) {
   return NetworkDevice(
     id: id,
     type: DeviceType.pc,
@@ -20,7 +20,7 @@ NetworkDevice _pc(String id, {String? dns}) {
         id: '$id-if',
         deviceId: id,
         name: 'Interfaz',
-        ipv4: Ipv4Configuration(address: '192.168.1.10', prefixLength: 24, dns: dns),
+        ipv4: Ipv4Configuration(address: address, prefixLength: 24, dns: dns),
       ),
     ],
   );
@@ -140,6 +140,33 @@ void main() {
 
       expect(result.success, false);
       expect(result.message, contains('no existe en la topología'));
+    });
+
+    test('DNS apunta a un dispositivo que no presta el servicio DNS', () {
+      final pc = _pc('pc', dns: '192.168.1.20');
+      // Existe y es alcanzable, pero no es servidor DNS.
+      final other = _pc('other', address: '192.168.1.20');
+      final sw = _switch('sw', 2);
+      final scenario = NetworkScenario(
+        id: 's',
+        title: 't',
+        objective: '',
+        devices: [pc, other, sw],
+        links: [
+          _link('l1', pc, 'pc-if', sw, 'sw-p0'),
+          _link('l2', other, 'other-if', sw, 'sw-p1'),
+        ],
+      );
+
+      final result = DnsEngine.resolve(
+        scenario: scenario,
+        hostname: 'portal.test',
+        clientDeviceId: 'pc',
+        clientDnsIp: '192.168.1.20',
+      );
+
+      expect(result.success, false);
+      expect(result.message, contains('no corresponde a un servidor DNS'));
     });
 
     test('DNS inalcanzable: servidor en otra red sin Relay', () {
