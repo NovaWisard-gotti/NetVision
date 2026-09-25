@@ -250,6 +250,7 @@ class _DeviceConfigSheetState extends ConsumerState<DeviceConfigSheet> {
                     icon: const Icon(Icons.settings_ethernet),
                     label: const Text('Solicitar configuración DHCP'),
                     onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
                       final result = DhcpEngine.requestAddress(
                           scenario: ref.read(workspaceProvider), client: device);
                       var justCompleted = false;
@@ -277,9 +278,9 @@ class _DeviceConfigSheetState extends ConsumerState<DeviceConfigSheet> {
                         });
                       }
                       if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
+                      messenger.showSnackBar(SnackBar(content: Text(result.message)));
                       if (justCompleted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        messenger.showSnackBar(const SnackBar(
                           content: Text('¡Caso completado! Se actualizó tu progreso.'),
                         ));
                       }
@@ -581,6 +582,7 @@ class _DnsLookupToolState extends ConsumerState<_DnsLookupTool> {
             const SizedBox(width: 8),
             FilledButton(
               onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
                 final scenario = ref.read(workspaceProvider);
                 final device = scenario.deviceById(widget.deviceId);
                 final clientDns = device?.primaryInterface?.ipv4?.dns;
@@ -597,9 +599,9 @@ class _DnsLookupToolState extends ConsumerState<_DnsLookupTool> {
                       await evaluateAndRegisterCaseCompletion(ref, ref.read(workspaceProvider));
                 }
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
+                messenger.showSnackBar(SnackBar(content: Text(result.message)));
                 if (justCompleted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  messenger.showSnackBar(const SnackBar(
                     content: Text('¡Caso completado! Se actualizó tu progreso.'),
                   ));
                 }
@@ -781,7 +783,7 @@ class _AddRouteRowState extends ConsumerState<_AddRouteRow> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: _exitIface,
+          initialValue: _exitIface,
           decoration: const InputDecoration(labelText: 'Interfaz de salida'),
           items: device.interfaces
               .map((i) => DropdownMenuItem(value: i.id, child: Text(i.name)))
