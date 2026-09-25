@@ -46,11 +46,11 @@ jobs:
       - name: Generate launcher icons
         run: dart run flutter_launcher_icons
 
-      - name: Static analysis (non-blocking)
-        run: flutter analyze || true
+      - name: Static analysis
+        run: flutter analyze
 
       - name: Run unit tests
-        run: flutter test || true
+        run: flutter test
 
       - name: Build debug APK
         run: flutter build apk --debug

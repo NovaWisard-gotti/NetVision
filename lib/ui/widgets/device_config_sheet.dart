@@ -465,6 +465,7 @@ class _DnsRecordsEditor extends ConsumerStatefulWidget {
 class _DnsRecordsEditorState extends ConsumerState<_DnsRecordsEditor> {
   final _hostCtrl = TextEditingController();
   final _ipCtrl = TextEditingController();
+  String? _error;
 
   @override
   void dispose() {
@@ -510,18 +511,30 @@ class _DnsRecordsEditorState extends ConsumerState<_DnsRecordsEditor> {
             ),
           ],
         ),
+        if (_error != null) ...[
+          const SizedBox(height: 4),
+          Text(_error!, style: const TextStyle(color: NetVisionColors.dangerRed)),
+        ],
         Align(
           alignment: Alignment.centerRight,
           child: TextButton.icon(
             icon: const Icon(Icons.add),
             label: const Text('Añadir registro'),
             onPressed: () {
-              if (_hostCtrl.text.trim().isEmpty || _ipCtrl.text.trim().isEmpty) return;
-              ref.read(workspaceProvider.notifier).setDnsRecord(
-                  widget.deviceId, _hostCtrl.text.trim(), _ipCtrl.text.trim());
+              final hostname = _hostCtrl.text.trim();
+              final ip = _ipCtrl.text.trim();
+              if (hostname.isEmpty) {
+                setState(() => _error = 'Indica el nombre de dominio.');
+                return;
+              }
+              if (!AddressingEngine.isValidIpv4(ip)) {
+                setState(() => _error = 'La IP del registro no es una dirección IPv4 válida.');
+                return;
+              }
+              ref.read(workspaceProvider.notifier).setDnsRecord(widget.deviceId, hostname, ip);
               _hostCtrl.clear();
               _ipCtrl.clear();
-              setState(() {});
+              setState(() => _error = null);
             },
           ),
         ),

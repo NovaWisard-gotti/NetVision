@@ -177,6 +177,37 @@ void main() {
       expect(result.message, contains('no es alcanzable'));
     });
 
+    test('registro DNS con IP inválida almacenada: no crashea, simplemente devuelve el valor guardado', () {
+      // Defensa contra datos inválidos preexistentes (p. ej. de una versión
+      // anterior sin validación en el editor): resolver nunca debe lanzar
+      // una excepción, aunque el valor guardado no sea una IPv4 válida.
+      final pc = _pc('pc', dns: '192.168.1.5');
+      final server = _dnsServer('server', records: {'roto.test': 'no-es-una-ip'});
+      final sw = _switch('sw', 2);
+      final scenario = NetworkScenario(
+        id: 's',
+        title: 't',
+        objective: '',
+        devices: [pc, server, sw],
+        links: [
+          _link('l1', pc, 'pc-if', sw, 'sw-p0'),
+          _link('l2', server, 'server-if', sw, 'sw-p1'),
+        ],
+      );
+
+      DnsResult? result;
+      expect(() {
+        result = DnsEngine.resolve(
+          scenario: scenario,
+          hostname: 'roto.test',
+          clientDeviceId: 'pc',
+          clientDnsIp: '192.168.1.5',
+        );
+      }, returnsNormally);
+      expect(result!.success, true);
+      expect(result!.resolvedIp, 'no-es-una-ip');
+    });
+
     test('dominio inexistente: servidor alcanzable pero sin ese registro', () {
       final pc = _pc('pc', dns: '192.168.1.5');
       final server = _dnsServer('server');

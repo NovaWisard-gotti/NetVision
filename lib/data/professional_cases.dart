@@ -231,10 +231,12 @@ NetworkScenario _case3OficinaEnCrecimiento() {
     id: 'case-3',
     title: 'Caso 3 — Oficina en crecimiento',
     objective:
-        'La oficina creció y la red plana 192.168.0.0/24 debe dividirse en cuatro subredes '
-        '(Recepción, Ventas, Soporte, Gerencia). Usa primero el Taller de subnetting para calcular '
-        'los cuatro bloques y su rango de hosts; luego regresa a esta topología y reconfigura las '
-        'direcciones IPv4 de cada equipo según la subred que le corresponda. Trabaja: subnetting, rangos y planificación.',
+        'La oficina planea crecer y dividir su red plana 192.168.0.0/24 en cuatro futuras subredes '
+        '(Recepción, Ventas, Soporte, Gerencia). Usa el Taller de subnetting para calcular los cuatro '
+        'bloques /26 y su rango de hosts para cada área. Esta topología representa la LAN actual, '
+        'todavía sin dividir físicamente (un solo switch y una sola interfaz de router): verifica que '
+        'los cuatro equipos se comuniquen correctamente entre sí dentro de 192.168.0.0/24. '
+        'Trabaja: subnetting, planificación de direccionamiento y VLSM.',
     devices: devices,
     links: links,
     isBuiltInCase: true,

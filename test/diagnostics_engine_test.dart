@@ -132,6 +132,98 @@ void main() {
     });
   });
 
+  group('DiagnosticsEngine - duplicateIp', () {
+    test('dos dispositivos con la misma IP se detectan', () {
+      final pcA = _pc('pcA', '192.168.1.10', 24);
+      final pcB = _pc('pcB', '192.168.1.10', 24); // Misma dirección.
+      final sw = _switch('sw', 2);
+      final scenario = NetworkScenario(
+        id: 's',
+        title: 't',
+        objective: '',
+        devices: [pcA, pcB, sw],
+        links: [
+          _link('l1', pcA, 'pcA-if', sw, 'sw-p0'),
+          _link('l2', pcB, 'pcB-if', sw, 'sw-p1'),
+        ],
+      );
+      final issues = DiagnosticsEngine.analyze(scenario);
+      final duplicates = issues.where((i) => i.type == IssueType.duplicateIp).toList();
+      expect(duplicates.length, 2); // Se reporta para cada dispositivo involucrado.
+    });
+
+    test('direcciones distintas no generan el problema', () {
+      final pcA = _pc('pcA', '192.168.1.10', 24);
+      final pcB = _pc('pcB', '192.168.1.11', 24);
+      final scenario = NetworkScenario(id: 's', title: 't', objective: '', devices: [pcA, pcB]);
+      final issues = DiagnosticsEngine.analyze(scenario);
+      expect(issues.any((i) => i.type == IssueType.duplicateIp), false);
+    });
+  });
+
+  group('DiagnosticsEngine - disabledLink', () {
+    test('un enlace deshabilitado se detecta', () {
+      final pcA = _pc('pcA', '192.168.1.10', 24);
+      final sw = _switch('sw', 1);
+      final link = _link('l1', pcA, 'pcA-if', sw, 'sw-p0')..enabled = false;
+      final scenario = NetworkScenario(
+        id: 's',
+        title: 't',
+        objective: '',
+        devices: [pcA, sw],
+        links: [link],
+      );
+      final issues = DiagnosticsEngine.analyze(scenario);
+      expect(issues.any((i) => i.type == IssueType.disabledLink), true);
+    });
+
+    test('un enlace habilitado no genera el problema', () {
+      final pcA = _pc('pcA', '192.168.1.10', 24);
+      final sw = _switch('sw', 1);
+      final scenario = NetworkScenario(
+        id: 's',
+        title: 't',
+        objective: '',
+        devices: [pcA, sw],
+        links: [_link('l1', pcA, 'pcA-if', sw, 'sw-p0')],
+      );
+      final issues = DiagnosticsEngine.analyze(scenario);
+      expect(issues.any((i) => i.type == IssueType.disabledLink), false);
+    });
+  });
+
+  group('DiagnosticsEngine - isolatedDevice', () {
+    test('un dispositivo sin ninguna conexión se detecta (si hay más de un dispositivo)', () {
+      final pcA = _pc('pcA', '192.168.1.10', 24);
+      final pcB = _pc('pcB', '192.168.1.11', 24); // Sin enlaces.
+      final scenario = NetworkScenario(id: 's', title: 't', objective: '', devices: [pcA, pcB]);
+      final issues = DiagnosticsEngine.analyze(scenario);
+      final isolated = issues.where((i) => i.type == IssueType.isolatedDevice).toList();
+      expect(isolated.length, 2);
+    });
+
+    test('un único dispositivo en el escenario no se marca como aislado', () {
+      final pcA = _pc('pcA', '192.168.1.10', 24);
+      final scenario = NetworkScenario(id: 's', title: 't', objective: '', devices: [pcA]);
+      final issues = DiagnosticsEngine.analyze(scenario);
+      expect(issues.any((i) => i.type == IssueType.isolatedDevice), false);
+    });
+
+    test('un dispositivo conectado no se marca como aislado', () {
+      final pcA = _pc('pcA', '192.168.1.10', 24);
+      final sw = _switch('sw', 1);
+      final scenario = NetworkScenario(
+        id: 's',
+        title: 't',
+        objective: '',
+        devices: [pcA, sw],
+        links: [_link('l1', pcA, 'pcA-if', sw, 'sw-p0')],
+      );
+      final issues = DiagnosticsEngine.analyze(scenario);
+      expect(issues.any((i) => i.type == IssueType.isolatedDevice), false);
+    });
+  });
+
   group('DiagnosticsEngine - sin falsos positivos en los casos profesionales por defecto', () {
     test('ninguno de los 5 casos genera incompatibleSubnets o missingRoute en su topología inicial', () {
       for (final scenario in buildProfessionalCases()) {
